@@ -1,21 +1,26 @@
 // ----------------------------------------------------------------------------
-// LightWare Serial API GRF-500
+// LightWare I2C API GRF-500
 // Version: 1.1.0
 // Copyright (c) 2025 LightWare Optoelectronics (Pty) Ltd.
 // https://www.lightwarelidar.com
 // ----------------------------------------------------------------------------
 //
-// License: MIT
+// License: MIT No Attribution (MIT-0)
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
 // deal in the Software without restriction, including without limitation the
 // rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
 // sell copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
+// furnished to do so.
 // 
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -25,7 +30,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 // ----------------------------------------------------------------------------
-#include "lw_serial_api_grf500.h"
+#include "lw_i2c_api_grf500.h"
 #include <string.h>
 
 // ----------------------------------------------------------------------------
@@ -105,7 +110,7 @@ lw_result lw_grf500_set_stream(lw_callback_device *device, lw_grf500_stream_id s
 }
 
 lw_result lw_grf500_get_distance_data(lw_callback_device *device, lw_grf500_distance_config config, lw_grf500_distance_data_cm *data) {
-    LW_CHECK_SUCCESS(lw_grf500_create_request_read_distance_data(&device->request))
+    LW_CHECK_SUCCESS(lw_grf500_create_request_read_distance_data(&device->request, config))
     LW_CHECK_SUCCESS(lw_send_request_get_response(device))
     return lw_grf500_parse_response_distance_data(&device->response, config, data);
 }
@@ -326,11 +331,6 @@ lw_result lw_grf500_set_rolling_average_size(lw_callback_device *device, uint32_
     return lw_send_request_get_response(device);
 }
 
-lw_result lw_grf500_set_sleep(lw_callback_device *device) {
-    LW_CHECK_SUCCESS(lw_grf500_create_request_write_sleep(&device->request))
-    return lw_send_request_get_response(device);
-}
-
 lw_result lw_grf500_get_led_state(lw_callback_device *device, lw_bool *enable) {
     LW_CHECK_SUCCESS(lw_grf500_create_request_read_led_state(&device->request))
     LW_CHECK_SUCCESS(lw_send_request_get_response(device))
@@ -359,12 +359,9 @@ lw_result lw_grf500_set_zero_offset(lw_callback_device *device, int32_t offset_c
 // Fully managed helpers and composed requests.
 // ----------------------------------------------------------------------------
 
-lw_result lw_grf500_initiate_serial(lw_callback_device *device) {
-    if (device->serial_send(device, (uint8_t *)"UUU", 3) == 0) {
-        return LW_RESULT_ERROR;
-    }
-
-    return LW_RESULT_SUCCESS;
+lw_result lw_grf500_initiate_comms(lw_callback_device *device) {
+    uint8_t init_sequence[] = {0xAA, 0xAA};
+    return device->i2c_write(device, 0, init_sequence, 2);
 }
 
 
@@ -374,12 +371,6 @@ lw_result lw_grf500_get_product_info(lw_callback_device *device, lw_grf500_produ
     LW_CHECK_SUCCESS(lw_grf500_get_firmware_version(device, &product_info->firmware_version))
     LW_CHECK_SUCCESS(lw_grf500_get_serial_number(device, product_info->serial_number))
 
-    return LW_RESULT_SUCCESS;
-}
-
-
-lw_result lw_grf500_sleep(lw_callback_device *device) {
-    LW_CHECK_SUCCESS(lw_grf500_set_sleep(device))
     return LW_RESULT_SUCCESS;
 }
 
@@ -401,43 +392,31 @@ lw_result lw_grf500_save_parameters(lw_callback_device *device) {
 
 
 
-lw_result lw_grf500_wait_for_streamed_distance_data(lw_callback_device *device, lw_grf500_distance_config config, lw_grf500_distance_data_cm *data, uint32_t timeout_ms) {
-    LW_CHECK_SUCCESS(lw_wait_for_next_response(device, LW_GRF500_COMMAND_DISTANCE_DATA, timeout_ms))
-    return lw_grf500_parse_response_distance_data(&device->response, config, data);
-}
-
-lw_result lw_grf500_wait_for_streamed_multi_data(lw_callback_device *device, lw_grf500_multi_data *data, uint32_t timeout_ms) {
-    LW_CHECK_SUCCESS(lw_wait_for_next_response(device, LW_GRF500_COMMAND_MULTI_DATA, timeout_ms))
-    return lw_grf500_parse_response_multi_data(&device->response, data);
-}
-
-
-
 // ----------------------------------------------------------------------------
 // Request generators.
 // ----------------------------------------------------------------------------
 lw_result lw_grf500_create_request_read_product_name(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_PRODUCT_NAME);
+    lw_create_request_read_data16(request, LW_GRF500_COMMAND_PRODUCT_NAME);
     return LW_RESULT_SUCCESS;
 }
 
 lw_result lw_grf500_create_request_read_hardware_version(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_HARDWARE_VERSION);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_HARDWARE_VERSION);
     return LW_RESULT_SUCCESS;
 }
 
 lw_result lw_grf500_create_request_read_firmware_version(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_FIRMWARE_VERSION);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_FIRMWARE_VERSION);
     return LW_RESULT_SUCCESS;
 }
 
 lw_result lw_grf500_create_request_read_serial_number(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_SERIAL_NUMBER);
+    lw_create_request_read_data16(request, LW_GRF500_COMMAND_SERIAL_NUMBER);
     return LW_RESULT_SUCCESS;
 }
 
 lw_result lw_grf500_create_request_read_user_data(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_USER_DATA);
+    lw_create_request_read_data16(request, LW_GRF500_COMMAND_USER_DATA);
     return LW_RESULT_SUCCESS;
 }
 
@@ -451,7 +430,7 @@ lw_result lw_grf500_create_request_write_user_data(lw_request *request, uint8_t 
 }
 
 lw_result lw_grf500_create_request_read_token(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_TOKEN);
+    lw_create_request_read_uint16(request, LW_GRF500_COMMAND_TOKEN);
     return LW_RESULT_SUCCESS;
 }
 
@@ -466,7 +445,7 @@ lw_result lw_grf500_create_request_write_reset(lw_request *request, uint16_t tok
 }
 
 lw_result lw_grf500_create_request_read_distance_config(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_DISTANCE_CONFIG);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_DISTANCE_CONFIG);
     return LW_RESULT_SUCCESS;
 }
 
@@ -476,7 +455,7 @@ lw_result lw_grf500_create_request_write_distance_config(lw_request *request, lw
 }
 
 lw_result lw_grf500_create_request_read_stream(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_STREAM);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_STREAM);
     return LW_RESULT_SUCCESS;
 }
 
@@ -491,18 +470,19 @@ lw_result lw_grf500_create_request_write_stream(lw_request *request, lw_grf500_s
     return LW_RESULT_SUCCESS;
 }
 
-lw_result lw_grf500_create_request_read_distance_data(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_DISTANCE_DATA);
+lw_result lw_grf500_create_request_read_distance_data(lw_request *request, lw_grf500_distance_config config) {
+    uint32_t read_size = lw_count_bits(config);
+    lw_create_request_read_data(request, LW_GRF500_COMMAND_DISTANCE_DATA, read_size);
     return LW_RESULT_SUCCESS;
 }
 
 lw_result lw_grf500_create_request_read_multi_data(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_MULTI_DATA);
+    lw_create_request_read_data(request, LW_GRF500_COMMAND_MULTI_DATA, 44);
     return LW_RESULT_SUCCESS;
 }
 
 lw_result lw_grf500_create_request_read_laser_firing(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_LASER_FIRING);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_LASER_FIRING);
     return LW_RESULT_SUCCESS;
 }
 
@@ -512,12 +492,12 @@ lw_result lw_grf500_create_request_write_laser_firing(lw_request *request, lw_bo
 }
 
 lw_result lw_grf500_create_request_read_temperature(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_TEMPERATURE);
+    lw_create_request_read_int32(request, LW_GRF500_COMMAND_TEMPERATURE);
     return LW_RESULT_SUCCESS;
 }
 
 lw_result lw_grf500_create_request_read_auto_exposure(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_AUTO_EXPOSURE);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_AUTO_EXPOSURE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -527,7 +507,7 @@ lw_result lw_grf500_create_request_write_auto_exposure(lw_request *request, lw_b
 }
 
 lw_result lw_grf500_create_request_read_update_rate(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_UPDATE_RATE);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_UPDATE_RATE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -541,12 +521,12 @@ lw_result lw_grf500_create_request_write_update_rate(lw_request *request, float 
 }
 
 lw_result lw_grf500_create_request_read_alarm_status(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_ALARM_STATUS);
+    lw_create_request_read_data(request, LW_GRF500_COMMAND_ALARM_STATUS, 2);
     return LW_RESULT_SUCCESS;
 }
 
 lw_result lw_grf500_create_request_read_alarm_return_mode(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_ALARM_RETURN_MODE);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_ALARM_RETURN_MODE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -556,7 +536,7 @@ lw_result lw_grf500_create_request_write_alarm_return_mode(lw_request *request, 
 }
 
 lw_result lw_grf500_create_request_read_lost_signal_counter(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_LOST_SIGNAL_COUNTER);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_LOST_SIGNAL_COUNTER);
     return LW_RESULT_SUCCESS;
 }
 
@@ -570,7 +550,7 @@ lw_result lw_grf500_create_request_write_lost_signal_counter(lw_request *request
 }
 
 lw_result lw_grf500_create_request_read_alarm_a_distance(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_ALARM_A_DISTANCE);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_ALARM_A_DISTANCE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -584,7 +564,7 @@ lw_result lw_grf500_create_request_write_alarm_a_distance(lw_request *request, u
 }
 
 lw_result lw_grf500_create_request_read_alarm_b_distance(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_ALARM_B_DISTANCE);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_ALARM_B_DISTANCE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -598,7 +578,7 @@ lw_result lw_grf500_create_request_write_alarm_b_distance(lw_request *request, u
 }
 
 lw_result lw_grf500_create_request_read_alarm_hysteresis(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_ALARM_HYSTERESIS);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_ALARM_HYSTERESIS);
     return LW_RESULT_SUCCESS;
 }
 
@@ -612,7 +592,7 @@ lw_result lw_grf500_create_request_write_alarm_hysteresis(lw_request *request, u
 }
 
 lw_result lw_grf500_create_request_read_gpio_mode(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_GPIO_MODE);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_GPIO_MODE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -622,7 +602,7 @@ lw_result lw_grf500_create_request_write_gpio_mode(lw_request *request, lw_grf50
 }
 
 lw_result lw_grf500_create_request_read_gpio_alarm_confirm_count(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_GPIO_ALARM_CONFIRM_COUNT);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_GPIO_ALARM_CONFIRM_COUNT);
     return LW_RESULT_SUCCESS;
 }
 
@@ -636,7 +616,7 @@ lw_result lw_grf500_create_request_write_gpio_alarm_confirm_count(lw_request *re
 }
 
 lw_result lw_grf500_create_request_read_median_filter_enable(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_MEDIAN_FILTER_ENABLE);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_MEDIAN_FILTER_ENABLE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -646,7 +626,7 @@ lw_result lw_grf500_create_request_write_median_filter_enable(lw_request *reques
 }
 
 lw_result lw_grf500_create_request_read_median_filter_size(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_MEDIAN_FILTER_SIZE);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_MEDIAN_FILTER_SIZE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -660,7 +640,7 @@ lw_result lw_grf500_create_request_write_median_filter_size(lw_request *request,
 }
 
 lw_result lw_grf500_create_request_read_smooth_filter_enable(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_SMOOTH_FILTER_ENABLE);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_SMOOTH_FILTER_ENABLE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -670,7 +650,7 @@ lw_result lw_grf500_create_request_write_smooth_filter_enable(lw_request *reques
 }
 
 lw_result lw_grf500_create_request_read_smooth_filter_factor(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_SMOOTH_FILTER_FACTOR);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_SMOOTH_FILTER_FACTOR);
     return LW_RESULT_SUCCESS;
 }
 
@@ -684,7 +664,7 @@ lw_result lw_grf500_create_request_write_smooth_filter_factor(lw_request *reques
 }
 
 lw_result lw_grf500_create_request_read_baud_rate(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_BAUD_RATE);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_BAUD_RATE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -694,7 +674,7 @@ lw_result lw_grf500_create_request_write_baud_rate(lw_request *request, lw_grf50
 }
 
 lw_result lw_grf500_create_request_read_i2c_address(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_I2C_ADDRESS);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_I2C_ADDRESS);
     return LW_RESULT_SUCCESS;
 }
 
@@ -704,7 +684,7 @@ lw_result lw_grf500_create_request_write_i2c_address(lw_request *request, uint8_
 }
 
 lw_result lw_grf500_create_request_read_rolling_average_enable(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_ROLLING_AVERAGE_ENABLE);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_ROLLING_AVERAGE_ENABLE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -714,7 +694,7 @@ lw_result lw_grf500_create_request_write_rolling_average_enable(lw_request *requ
 }
 
 lw_result lw_grf500_create_request_read_rolling_average_size(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_ROLLING_AVERAGE_SIZE);
+    lw_create_request_read_uint32(request, LW_GRF500_COMMAND_ROLLING_AVERAGE_SIZE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -727,13 +707,8 @@ lw_result lw_grf500_create_request_write_rolling_average_size(lw_request *reques
     return LW_RESULT_SUCCESS;
 }
 
-lw_result lw_grf500_create_request_write_sleep(lw_request *request) {
-    lw_create_request_write_uint8(request, LW_GRF500_COMMAND_SLEEP, 123);
-    return LW_RESULT_SUCCESS;
-}
-
 lw_result lw_grf500_create_request_read_led_state(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_LED_STATE);
+    lw_create_request_read_uint8(request, LW_GRF500_COMMAND_LED_STATE);
     return LW_RESULT_SUCCESS;
 }
 
@@ -743,7 +718,7 @@ lw_result lw_grf500_create_request_write_led_state(lw_request *request, lw_bool 
 }
 
 lw_result lw_grf500_create_request_read_zero_offset(lw_request *request) {
-    lw_create_request_read(request, LW_GRF500_COMMAND_ZERO_OFFSET);
+    lw_create_request_read_int32(request, LW_GRF500_COMMAND_ZERO_OFFSET);
     return LW_RESULT_SUCCESS;
 }
 

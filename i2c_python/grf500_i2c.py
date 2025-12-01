@@ -1,10 +1,10 @@
 """
-LightWare Serial API GRF-500
+LightWare I2C API GRF-500
 Version: 1.1.0
 Copyright (c) 2025 LightWare Optoelectronics (Pty) Ltd.
 https://www.lightwarelidar.com
 
-This module provides a Python interface to the GRF-500 sensor over the serial interfaces (UART/USB).
+This module provides a Python interface to the GRF-500 sensor over I2C interfaces.
 
 License: MIT No Attribution (MIT-0)
 
@@ -32,65 +32,25 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
-from typing import NamedTuple
+from typing import NamedTuple, Protocol
 from enum import Enum, IntFlag
-import time
-import serial
 
-# -----------------------------------------------------------------------------
-# Serial service handler.
-# -----------------------------------------------------------------------------
-class SerialServiceHandler:
-    """
-    Provides a serial port implementation to communicate with a physical device.
-    """
+class I2cServiceHandler(Protocol):
+    """Provides an I2C port implementation to communicate with a physical device."""
 
-    def __init__(self, port_name: str, baud_rate: int):
-        self.port = serial.Serial(port_name, baud_rate)
+    def __init__(self, bus_id: int, address: int = 0x66):
+        ...
 
     def __del__(self):
-        self.port.close()
+        ...
 
-    def read_byte(self) -> int | None:
-        """
-        Read a single byte from the serial port and return it as an integer.
-        Returns None if no data is available.
-        """
+    def read(self, register: int, length: int) -> bytearray:
+        """Read a specified number of bytes from the I2C port."""
+        ...
 
-        # This should be a non-blocking read.
-        if self.port.in_waiting == 0:
-            return None
-        else:
-            return ord(self.port.read(1))
-
-    def write(self, data):
-        """Write data to the serial port."""
-
-        self.port.write(data)
-
-
-# -----------------------------------------------------------------------------
-# Helpers.
-# -----------------------------------------------------------------------------
-def create_crc(data):
-    """Creates a 16-bit CRC of the specified data."""
-
-    crc = 0
-
-    for i in data:
-        code = crc >> 8
-        code ^= int(i)
-        code ^= code >> 4
-        crc = crc << 8
-        crc ^= code
-        code = code << 5
-        crc ^= code
-        code = code << 7
-        crc ^= code
-        crc &= 0xFFFF
-
-    return crc
-
+    def write(self, register: int, data: bytearray):
+        """Write data to the I2C port."""
+        ...
 
 # -----------------------------------------------------------------------------
 # Request.
@@ -98,69 +58,73 @@ def create_crc(data):
 class Request:
     """Handles the creation of request packets."""
 
-    command_id: int
+    command_id: int | None
     data: bytearray
+    write: bool
+    length: int
 
     def __init__(self):
         self.command_id = None
-        self.data = []
+        self.data = bytearray()
+        self.write = False
+        self.length = 0
 
-    def build_packet(self, command_id: int, write: bool, data: list[int] = None):
-        if data is None:
-            data = []
-
+    def build_read_packet(self, command_id: int, length: int):
         self.command_id = command_id
+        self.data = bytearray()
+        self.write = False
+        self.length = length
 
-        payload_length = 1 + len(data)
-        flags = payload_length << 6
+    def build_write_packet(self, command_id: int, data: bytes):
+        self.command_id = command_id
+        self.data = bytearray(data)
+        self.write = True
+        self.length = len(data)
 
-        if write:
-            flags = flags | 0x1
+    def create_read_int8(self, command_id: int):
+        self.build_read_packet(command_id, 1)
 
-        packet_bytes = [0xAA, flags & 0xFF, (flags >> 8) & 0xFF, command_id]
-        packet_bytes.extend(data)
-        crc = create_crc(packet_bytes)
-        packet_bytes.append(crc & 0xFF)
-        packet_bytes.append((crc >> 8) & 0xFF)
+    def create_read_int16(self, command_id: int):
+        self.build_read_packet(command_id, 2)
 
-        self.data = bytearray(packet_bytes)
+    def create_read_int32(self, command_id: int):
+        self.build_read_packet(command_id, 4)
 
-    def create_read(self, command_id: int):
-        self.build_packet(command_id, False)
+    def create_read_uint8(self, command_id: int):
+        self.build_read_packet(command_id, 1)
+
+    def create_read_uint16(self, command_id: int):
+        self.build_read_packet(command_id, 2)
+    
+    def create_read_uint32(self, command_id: int):
+        self.build_read_packet(command_id, 4)
+
+    def create_read_data(self, command_id: int, size: int):
+        self.build_read_packet(command_id, size)
+
+    def create_read_data16(self, command_id: int):
+        self.build_read_packet(command_id, 16)
 
     def create_write_int8(self, command_id: int, value: int):
-        self.build_packet(
-            command_id, True, int.to_bytes(value, 1, byteorder="little", signed=True)
-        )
+        self.build_write_packet(command_id, int.to_bytes(value, 1, byteorder="little", signed=True))
 
     def create_write_int16(self, command_id: int, value: int):
-        self.build_packet(
-            command_id, True, int.to_bytes(value, 2, byteorder="little", signed=True)
-        )
+        self.build_write_packet(command_id, int.to_bytes(value, 2, byteorder="little", signed=True))
 
     def create_write_int32(self, command_id: int, value: int):
-        self.build_packet(
-            command_id, True, int.to_bytes(value, 4, byteorder="little", signed=True)
-        )
+        self.build_write_packet(command_id, int.to_bytes(value, 4, byteorder="little", signed=True))
 
     def create_write_uint8(self, command_id: int, value: int):
-        self.build_packet(
-            command_id, True, int.to_bytes(value, 1, byteorder="little", signed=False)
-        )
+        self.build_write_packet(command_id, int.to_bytes(value, 1, byteorder="little", signed=False))
 
     def create_write_uint16(self, command_id: int, value: int):
-        self.build_packet(
-            command_id, True, int.to_bytes(value, 2, byteorder="little", signed=False)
-        )
+        self.build_write_packet(command_id, int.to_bytes(value, 2, byteorder="little", signed=False))
 
     def create_write_uint32(self, command_id: int, value: int):
-        self.build_packet(
-            command_id, True, int.to_bytes(value, 4, byteorder="little", signed=False)
-        )
+        self.build_write_packet(command_id, int.to_bytes(value, 4, byteorder="little", signed=False))
 
-    def create_write_data(self, command_id: int, data: list[int]):
-        self.build_packet(command_id, True, data)
-
+    def create_write_data(self, command_id: int, data: bytes):
+        self.build_write_packet(command_id, data)
 
 # -----------------------------------------------------------------------------
 # Response.
@@ -168,86 +132,46 @@ class Request:
 class Response:
     """Handles the parsing of response packets."""
 
-    command_id: int
+    command_id: int | None
     data: bytearray
-    parse_state: int
-    payload_size: int
-
+    
     def __init__(self):
         self.reset()
 
     def reset(self):
         self.command_id = None
-        self.data = []
-        self.parse_state = 0
-        self.payload_size = 0
+        self.data = bytearray()
+    
+    def parse_int8(self, offset: int = 0):
+        return int.from_bytes(self.data[offset:offset+1], byteorder="little", signed=True)
 
-    def feed(self, byte: int):
-        if self.parse_state == 0:
-            if byte == 0xAA:
-                self.parse_state = 1
-                self.data = [0xAA]
+    def parse_int16(self, offset: int = 0):
+        return int.from_bytes(self.data[offset:offset+2], byteorder="little", signed=True)
 
-        elif self.parse_state == 1:
-            self.parse_state = 2
-            self.data.append(byte)
+    def parse_int32(self, offset: int = 0):
+        return int.from_bytes(self.data[offset:offset+4], byteorder="little", signed=True)
 
-        elif self.parse_state == 2:
-            self.parse_state = 3
-            self.data.append(byte)
-            self.payload_size = (self.data[1] | (self.data[2] << 8)) >> 6
-            self.payload_size += 2
+    def parse_uint8(self, offset: int = 0):
+        return int.from_bytes(self.data[offset:offset+1], byteorder="little", signed=False)
 
-            if self.payload_size > 1019 or self.payload_size < 3:
-                self.parse_state = 0
+    def parse_uint16(self, offset: int = 0):
+        return int.from_bytes(self.data[offset:offset+2], byteorder="little", signed=False)
 
-        elif self.parse_state == 3:
-            self.data.append(byte)
-            self.payload_size -= 1
+    def parse_uint32(self, offset: int = 0):
+        return int.from_bytes(self.data[offset:offset+4], byteorder="little", signed=False)
 
-            if self.payload_size == 0:
-                self.parse_state = 0
-                crc = self.data[len(self.data) - 2] | (
-                    self.data[len(self.data) - 1] << 8
-                )
-                verify_crc = create_crc(self.data[0:-2])
-
-                if crc == verify_crc:
-                    self.command_id = self.data[3]
-                    return True
-
-        return False
-
-    def parse_int8(self):
-        return int.from_bytes(self.data[4:5], byteorder="little", signed=True)
-
-    def parse_int16(self):
-        return int.from_bytes(self.data[4:6], byteorder="little", signed=True)
-
-    def parse_int32(self):
-        return int.from_bytes(self.data[4:8], byteorder="little", signed=True)
-
-    def parse_uint8(self):
-        return int.from_bytes(self.data[4:5], byteorder="little", signed=False)
-
-    def parse_uint16(self):
-        return int.from_bytes(self.data[4:6], byteorder="little", signed=False)
-
-    def parse_uint32(self):
-        return int.from_bytes(self.data[4:8], byteorder="little", signed=False)
-
-    def parse_string(self):
+    def parse_string(self, offset: int = 0):
         str16 = ""
         for i in range(0, 16):
-            if self.data[4 + i] == 0:
+            if self.data[offset + i] == 0:
                 break
             else:
-                str16 += chr(self.data[4 + i])
+                str16 += chr(self.data[offset + i])
 
         return str16
 
-    def parse_data(self, size):
-        return self.data[4 : 4 + size]
+    def parse_data(self, size: int, offset: int = 0):
+        return self.data[offset : offset + size]
 
 
 # -----------------------------------------------------------------------------
@@ -426,7 +350,7 @@ class Grf500:
     Handles request/response communication with the sensor.
     """
 
-    def __init__(self, service_handler: SerialServiceHandler):
+    def __init__(self, service_handler: I2cServiceHandler):
         self.service_handler = service_handler
         self.request = Request()
         self.response = Response()
@@ -436,44 +360,15 @@ class Grf500:
     # -----------------------------------------------------------------------------
     # Communication functions.
     # -----------------------------------------------------------------------------
-    def wait_for_next_response(self, command: int, timeout: float = 1) -> bool:
-        """
-        Wait for the next response from the device.
+    def send_request_get_response(self):
+        if self.request.command_id is None:
+            raise ValueError("Request command_id is not set.")
 
-        :param command: The expected command ID.
-        :param timeout: The maximum time to wait for a response, if 0 then non-blocking.
-        :return: True if the response matches the expected command ID. False if the timeout is
-        reached, or no bytes were read if non-blocking.
-        """
+        if self.request.write:
+            self.service_handler.write(self.request.command_id, self.request.data)
+        else:
+            self.response.data = self.service_handler.read(self.request.command_id, self.request.length)
 
-        end_time = time.time() + timeout
-
-        while True:
-            byte = self.service_handler.read_byte()
-
-            if byte is None:
-                if time.time() >= end_time:
-                    return False
-            else:
-                if self.response.feed(byte):
-                    if self.response.command_id == command:
-                        return True
-
-    def send_request_get_response(self, timeout=1):
-        retries = self.request_retries
-
-        while retries > 0:
-            retries -= 1
-
-            self.service_handler.write(self.request.data)
-
-            self.response.reset()
-
-            response = self.wait_for_next_response(self.request.command_id, timeout)
-            if response is True:
-                return
-
-        raise TimeoutError("Request failed to get a response.")
 
     # -----------------------------------------------------------------------------
     # Device commands.
@@ -485,7 +380,7 @@ class Grf500:
         :return: The product name.
         """
 
-        self.request.create_read(CommandId.PRODUCT_NAME.value)
+        self.request.create_read_data16(CommandId.PRODUCT_NAME.value)
         self.send_request_get_response()
         return self.response.parse_string()
 
@@ -496,7 +391,7 @@ class Grf500:
         :return: The hardware version.
         """
 
-        self.request.create_read(CommandId.HARDWARE_VERSION.value)
+        self.request.create_read_uint32(CommandId.HARDWARE_VERSION.value)
         self.send_request_get_response()
         return self.response.parse_uint32()
 
@@ -507,7 +402,7 @@ class Grf500:
         :return: The firmware version.
         """
 
-        self.request.create_read(CommandId.FIRMWARE_VERSION.value)
+        self.request.create_read_uint32(CommandId.FIRMWARE_VERSION.value)
         self.send_request_get_response()
         firmware_bytes = self.response.parse_data(3)
         firmware_str = f"{firmware_bytes[2]}.{firmware_bytes[1]}.{firmware_bytes[0]}"
@@ -520,7 +415,7 @@ class Grf500:
         :return: The serial number.
         """
 
-        self.request.create_read(CommandId.SERIAL_NUMBER.value)
+        self.request.create_read_data16(CommandId.SERIAL_NUMBER.value)
         self.send_request_get_response()
         return self.response.parse_string()
 
@@ -531,7 +426,7 @@ class Grf500:
         :return: 16-bytes of user data.
         """
 
-        self.request.create_read(CommandId.USER_DATA.value)
+        self.request.create_read_data16(CommandId.USER_DATA.value)
         self.send_request_get_response()
         return self.response.parse_data(16)
 
@@ -555,7 +450,7 @@ class Grf500:
         :return: The next usable safety token.
         """
 
-        self.request.create_read(CommandId.TOKEN.value)
+        self.request.create_read_uint16(CommandId.TOKEN.value)
         self.send_request_get_response()
         return self.response.parse_uint16()
 
@@ -586,7 +481,7 @@ class Grf500:
         :return: The current distance configuration.
         """
 
-        self.request.create_read(CommandId.DISTANCE_CONFIG.value)
+        self.request.create_read_uint32(CommandId.DISTANCE_CONFIG.value)
         self.send_request_get_response()
         return self.response.parse_uint32()
 
@@ -607,7 +502,7 @@ class Grf500:
         :return: The current stream.
         """
 
-        self.request.create_read(CommandId.STREAM.value)
+        self.request.create_read_uint32(CommandId.STREAM.value)
         self.send_request_get_response()
         return StreamId(self.response.parse_uint32())
 
@@ -630,7 +525,8 @@ class Grf500:
         :return: Distance data or None if the timeout is reached.
         """
 
-        self.request.create_read(CommandId.DISTANCE_DATA.value)
+        read_size = DistanceDataCm.get_size(config)
+        self.request.create_read_data(CommandId.DISTANCE_DATA.value, read_size)
         self.send_request_get_response()
         return DistanceDataCm(self.response, config)
 
@@ -641,7 +537,7 @@ class Grf500:
         :return: Multi data or None if the timeout is reached.
         """
 
-        self.request.create_read(CommandId.MULTI_DATA.value)
+        self.request.create_read_data(CommandId.MULTI_DATA.value, 44)
         self.send_request_get_response()
         return MultiData(self.response)
 
@@ -652,7 +548,7 @@ class Grf500:
         :return: The laser firing state.
         """
 
-        self.request.create_read(CommandId.LASER_FIRING.value)
+        self.request.create_read_uint8(CommandId.LASER_FIRING.value)
         self.send_request_get_response()
         return self.response.parse_uint8() != 0
 
@@ -673,7 +569,7 @@ class Grf500:
         :return: The temperature in 100th of a degree Celsius.
         """
 
-        self.request.create_read(CommandId.TEMPERATURE.value)
+        self.request.create_read_int32(CommandId.TEMPERATURE.value)
         self.send_request_get_response()
         return self.response.parse_int32()
 
@@ -684,7 +580,7 @@ class Grf500:
         :return: The auto exposure state.
         """
 
-        self.request.create_read(CommandId.AUTO_EXPOSURE.value)
+        self.request.create_read_uint8(CommandId.AUTO_EXPOSURE.value)
         self.send_request_get_response()
         return self.response.parse_uint8() != 0
 
@@ -705,7 +601,7 @@ class Grf500:
         :return: The update rate in Hz.
         """
 
-        self.request.create_read(CommandId.UPDATE_RATE.value)
+        self.request.create_read_uint32(CommandId.UPDATE_RATE.value)
         self.send_request_get_response()
         return self.response.parse_uint32()/ 10
 
@@ -729,7 +625,7 @@ class Grf500:
         :return: The alarm status of Alarm A and Alarm B.
         """
 
-        self.request.create_read(CommandId.ALARM_STATUS.value)
+        self.request.create_read_data(CommandId.ALARM_STATUS.value, 2)
         self.send_request_get_response()
         return AlarmStatus(self.response)
 
@@ -740,7 +636,7 @@ class Grf500:
         :return: The alarm return mode.
         """
 
-        self.request.create_read(CommandId.ALARM_RETURN_MODE.value)
+        self.request.create_read_uint8(CommandId.ALARM_RETURN_MODE.value)
         self.send_request_get_response()
         return self.response.parse_uint8()
 
@@ -762,7 +658,7 @@ Lost signal value will be -1000 mm.
         :return: The lost signal counter.
         """
 
-        self.request.create_read(CommandId.LOST_SIGNAL_COUNTER.value)
+        self.request.create_read_uint32(CommandId.LOST_SIGNAL_COUNTER.value)
         self.send_request_get_response()
         return self.response.parse_uint32()
 
@@ -786,7 +682,7 @@ Lost signal value will be -1000 mm.
         :return: The alarm A distance in cm.
         """
 
-        self.request.create_read(CommandId.ALARM_A_DISTANCE.value)
+        self.request.create_read_uint32(CommandId.ALARM_A_DISTANCE.value)
         self.send_request_get_response()
         return self.response.parse_uint32()* 10
 
@@ -810,7 +706,7 @@ Lost signal value will be -1000 mm.
         :return: The alarm B distance in cm.
         """
 
-        self.request.create_read(CommandId.ALARM_B_DISTANCE.value)
+        self.request.create_read_uint32(CommandId.ALARM_B_DISTANCE.value)
         self.send_request_get_response()
         return self.response.parse_uint32()* 10
 
@@ -834,7 +730,7 @@ Lost signal value will be -1000 mm.
         :return: The alarm hysterisis in cm.
         """
 
-        self.request.create_read(CommandId.ALARM_HYSTERESIS.value)
+        self.request.create_read_uint32(CommandId.ALARM_HYSTERESIS.value)
         self.send_request_get_response()
         return self.response.parse_uint32()* 10
 
@@ -858,7 +754,7 @@ Lost signal value will be -1000 mm.
         :return: The alarm pin output mode.
         """
 
-        self.request.create_read(CommandId.GPIO_MODE.value)
+        self.request.create_read_uint8(CommandId.GPIO_MODE.value)
         self.send_request_get_response()
         return self.response.parse_uint8()
 
@@ -879,7 +775,7 @@ Lost signal value will be -1000 mm.
         :return: The number of confirmations.
         """
 
-        self.request.create_read(CommandId.GPIO_ALARM_CONFIRM_COUNT.value)
+        self.request.create_read_uint32(CommandId.GPIO_ALARM_CONFIRM_COUNT.value)
         self.send_request_get_response()
         return self.response.parse_uint32()
 
@@ -903,7 +799,7 @@ Lost signal value will be -1000 mm.
         :return: The median filter state.
         """
 
-        self.request.create_read(CommandId.MEDIAN_FILTER_ENABLE.value)
+        self.request.create_read_uint8(CommandId.MEDIAN_FILTER_ENABLE.value)
         self.send_request_get_response()
         return self.response.parse_uint8() != 0
 
@@ -924,7 +820,7 @@ Lost signal value will be -1000 mm.
         :return: The median filter size.
         """
 
-        self.request.create_read(CommandId.MEDIAN_FILTER_SIZE.value)
+        self.request.create_read_uint32(CommandId.MEDIAN_FILTER_SIZE.value)
         self.send_request_get_response()
         return self.response.parse_uint32()
 
@@ -948,7 +844,7 @@ Lost signal value will be -1000 mm.
         :return: The smooth filter state.
         """
 
-        self.request.create_read(CommandId.SMOOTH_FILTER_ENABLE.value)
+        self.request.create_read_uint8(CommandId.SMOOTH_FILTER_ENABLE.value)
         self.send_request_get_response()
         return self.response.parse_uint8() != 0
 
@@ -969,7 +865,7 @@ Lost signal value will be -1000 mm.
         :return: The smooth filter factor.
         """
 
-        self.request.create_read(CommandId.SMOOTH_FILTER_FACTOR.value)
+        self.request.create_read_uint32(CommandId.SMOOTH_FILTER_FACTOR.value)
         self.send_request_get_response()
         return self.response.parse_uint32()
 
@@ -993,7 +889,7 @@ Lost signal value will be -1000 mm.
         :return: The baud rate.
         """
 
-        self.request.create_read(CommandId.BAUD_RATE.value)
+        self.request.create_read_uint8(CommandId.BAUD_RATE.value)
         self.send_request_get_response()
         return self.response.parse_uint8()
 
@@ -1014,7 +910,7 @@ Lost signal value will be -1000 mm.
         :return: The I2C address.
         """
 
-        self.request.create_read(CommandId.I2C_ADDRESS.value)
+        self.request.create_read_uint8(CommandId.I2C_ADDRESS.value)
         self.send_request_get_response()
         return self.response.parse_uint8()
 
@@ -1035,7 +931,7 @@ Lost signal value will be -1000 mm.
         :return: The rolling average filter state.
         """
 
-        self.request.create_read(CommandId.ROLLING_AVERAGE_ENABLE.value)
+        self.request.create_read_uint8(CommandId.ROLLING_AVERAGE_ENABLE.value)
         self.send_request_get_response()
         return self.response.parse_uint8() != 0
 
@@ -1056,7 +952,7 @@ Lost signal value will be -1000 mm.
         :return: The rolling average filter size.
         """
 
-        self.request.create_read(CommandId.ROLLING_AVERAGE_SIZE.value)
+        self.request.create_read_uint32(CommandId.ROLLING_AVERAGE_SIZE.value)
         self.send_request_get_response()
         return self.response.parse_uint32()
 
@@ -1073,14 +969,6 @@ Lost signal value will be -1000 mm.
         self.request.create_write_uint32(CommandId.ROLLING_AVERAGE_SIZE.value, size)
         self.send_request_get_response()
 
-    def set_sleep(self):
-        """
-        Puts the device into sleep mode. This mode is only available in serial UART communication mode. The device is then awakened by any activity on the Serial UART communication lines and will resume previous operation.
-        """
-
-        self.request.create_write_uint8(CommandId.SLEEP.value, 123)
-        self.send_request_get_response()
-
     def get_led_state(self) -> bool:
         """
         Get the state of the LED.
@@ -1088,7 +976,7 @@ Lost signal value will be -1000 mm.
         :return: The LED state.
         """
 
-        self.request.create_read(CommandId.LED_STATE.value)
+        self.request.create_read_uint8(CommandId.LED_STATE.value)
         self.send_request_get_response()
         return self.response.parse_uint8() != 0
 
@@ -1109,7 +997,7 @@ Lost signal value will be -1000 mm.
         :return: The zero offset in cm.
         """
 
-        self.request.create_read(CommandId.ZERO_OFFSET.value)
+        self.request.create_read_int32(CommandId.ZERO_OFFSET.value)
         self.send_request_get_response()
         return self.response.parse_int32()* 10
 
@@ -1123,20 +1011,20 @@ Lost signal value will be -1000 mm.
         self.request.create_write_int32(CommandId.ZERO_OFFSET.value, offset_cm/ 10)
         self.send_request_get_response()
 
-    
+
 
     # -----------------------------------------------------------------------------
     # Helpers and composed requests.
     # -----------------------------------------------------------------------------\
 
-    def initiate_serial(self):
+    def initiate_comms(self):
         """
-        When communicating with the GRF-500 over the serial interface, it is
-        important to initiate serial mode. This is only required if the startup
+        When communicating with the GRF-500 over the I2C interface, it is
+        important to initiate I2C mode. This is only required if the startup
         mode is 'Wait for interface'.
         """
 
-        self.service_handler.write(b"UUU")
+        self.service_handler.write(0, bytearray([0x80]))
 
 
     def get_product_information(self):
@@ -1155,20 +1043,10 @@ Lost signal value will be -1000 mm.
         )
 
 
-    def sleep(self):
-        """
-        Puts the device into sleep mode. This mode is only available in serial
-        UART communication mode. The device is then awakened by any activity on the
-        Serial UART communication lines and will resume previous operation.
-        """
-
-        self.set_sleep()
-
-
     def reset(self):
         """
         Restart the device as if it had been power cycled. You will need to
-        re-establish the serial connection after this command.
+        re-establish the communication connection after this command.
         """
 
         self.set_reset(self.get_token())
@@ -1180,35 +1058,3 @@ Lost signal value will be -1000 mm.
         """
 
         self.set_save_parameters(self.get_token())
-
-
-    # -----------------------------------------------------------------------------
-    # Streaming helpers.
-    # -----------------------------------------------------------------------------\
-    def wait_for_streamed_distance_data(self, config: DistanceConfig, timeout: float = 1) -> DistanceDataCm | None:
-        """
-        Get the next streamed distance data.
-
-        :param config: The distance configuration flags.
-        :param timeout: The timeout in seconds, if 0 then this function is non-blocking.
-        :return: Distance data or None if the timeout is reached.
-        """
-
-        if not self.wait_for_next_response(CommandId.DISTANCE_DATA.value, timeout):
-            return None
-
-        return DistanceDataCm(self.response, config)
-
-    def wait_for_streamed_multi_data(self, timeout: float = 1) -> MultiData | None:
-        """
-        Get the next streamed multi signal distance data.
-
-        :param timeout: The timeout in seconds, if 0 then this function is non-blocking.
-        :return: Multi data or None if the timeout is reached.
-        """
-
-        if not self.wait_for_next_response(CommandId.MULTI_DATA.value, timeout):
-            return None
-
-        return MultiData(self.response)
-

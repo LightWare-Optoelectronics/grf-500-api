@@ -1,21 +1,26 @@
 // ----------------------------------------------------------------------------
-// LightWare Serial API
+// LightWare I2C API
 // Version: 1.1.0
 // Copyright (c) 2025 LightWare Optoelectronics (Pty) Ltd.
 // https://www.lightwarelidar.com
 // ----------------------------------------------------------------------------
 //
-// License: MIT
+// License: MIT No Attribution (MIT-0)
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
 // deal in the Software without restriction, including without limitation the
 // rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
 // sell copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
+// furnished to do so.
 // 
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -133,7 +138,6 @@ lw_firmware_version lw_expand_firmware_version(uint32_t version);
 //
 // The functions here construct and parse binary packets in the simplest form.
 // ----------------------------------------------------------------------------
-#define LW_PACKET_START_BYTE 0xAA
 #define LW_PACKET_SEND_SIZE 160
 
 #ifdef LW_LARGE_PACKETS
@@ -142,28 +146,25 @@ lw_firmware_version lw_expand_firmware_version(uint32_t version);
 #define LW_PACKET_RECV_SIZE 64
 #endif
 
-typedef enum {
-    LW_PARSESTATE_START,
-    LW_PARSESTATE_FLAGS1,
-    LW_PARSESTATE_FLAGS2,
-    LW_PARSESTATE_PAYLOAD,
-    LW_PARSESTATE_DONE,
-} lw_packet_parse_state;
-
 typedef struct {
     uint8_t data[LW_PACKET_SEND_SIZE];
     uint32_t data_size;
     uint8_t command_id;
+    uint8_t write;
 } lw_request;
 
-// Set alignment to 1 byte.
 typedef struct {
     uint8_t data[LW_PACKET_RECV_SIZE];
     uint32_t data_size;
-    uint32_t payload_size;
-    lw_packet_parse_state parse_state;
     uint8_t command_id;
 } lw_response;
+
+/*
+ * Initialize a request.
+ *
+ * @param request The request to initialize.
+ */
+void lw_init_request(lw_request *request);
 
 /*
  * Initialize a response.
@@ -173,58 +174,89 @@ typedef struct {
 void lw_init_response(lw_response *response);
 
 /*
- * Create a CRC for a data buffer.
+ * Count the number of set bits in a 32-bit integer.
  *
- * @param data The data buffer.
- * @param size The size of the data buffer.
- * @return The CRC.
+ * @param value The value to count bits in.
+ * @return The number of set bits.
  */
-uint16_t lw_create_crc(uint8_t *data, uint16_t size);
-
-/*
- * Create a binary protocol packet.
- *
- * @param packet_buffer The buffer to write the packet to.
- * @param command_id The command ID.
- * @param write Whether the packet is a write or read packet.
- * @param data The data to write to the packet.
- * @param data_size The size of the data.
- * @return The number of bytes written to packet_buffer.
- */
-uint32_t lw_create_packet(uint8_t *packet_buffer, uint8_t command_id, uint8_t write, uint8_t *data, uint32_t data_size);
-
-/*
- * Feed a response byte by byte until a full response packet is completed.
- *
- * @param response The response to feed.
- * @param data The data byte.
- * @return LW_RESULT_SUCCESS if the response is complete, or LW_RESULT_AGAIN if more data is needed.
- */
-lw_result lw_feed_response(lw_response *response, uint8_t data);
-
-/*
- * Extracts data from the packet buffer after the header.
- *
- * @param packet_buffer The full packet buffer.
- * @param data The data buffer to write the extracted data to.
- * @param size The size of the data to extract.
- * @param offset The offset to start reading from AFTER the packet header.
- */
-void lw_parse_packet_data(uint8_t *packet_buffer, uint8_t *data, uint32_t size, uint32_t offset);
+inline uint8_t lw_count_bits(uint32_t value) {
+    int count = 0;
+    while (value > 0) {
+        value &= (value - 1);
+        count++;
+    }
+    return count;
+}
 
 // ----------------------------------------------------------------------------
 // Request generators.
 //
 // These functions construct a request for a specific command type.
 // ----------------------------------------------------------------------------
-
 /*
- * Create a read request. No additional data is sent with read requests.
+ * Create a read request for an int8_t value.
  *
  * @param request The request to create.
  * @param command_id The command ID.
  */
-void lw_create_request_read(lw_request *request, uint8_t command_id);
+void lw_create_request_read_int8(lw_request *request, uint8_t command_id);
+
+/*
+ * Create a read request for an int16_t value.
+ *
+ * @param request The request to create.
+ * @param command_id The command ID.
+ */
+void lw_create_request_read_int16(lw_request *request, uint8_t command_id);
+
+/*
+ * Create a read request for an int32_t value.
+ *
+ * @param request The request to create.
+ * @param command_id The command ID.
+ */
+void lw_create_request_read_int32(lw_request *request, uint8_t command_id);
+
+/*
+ * Create a read request for a uint8_t value.
+ *
+ * @param request The request to create.
+ * @param command_id The command ID.
+ */
+void lw_create_request_read_uint8(lw_request *request, uint8_t command_id);
+
+/*
+ * Create a read request for a uint16_t value.
+ *
+ * @param request The request to create.
+ * @param command_id The command ID.
+ */
+void lw_create_request_read_uint16(lw_request *request, uint8_t command_id);
+
+/*
+ * Create a read request for a uint32_t value.
+ *
+ * @param request The request to create.
+ * @param command_id The command ID.
+ */
+void lw_create_request_read_uint32(lw_request *request, uint8_t command_id);
+
+/*
+ * Create a read request for a 16-byte data buffer.
+ *
+ * @param request The request to create.
+ * @param command_id The command ID.
+ */
+void lw_create_request_read_data16(lw_request *request, uint8_t command_id);
+
+/*
+ * Create a read request for an arbitrary amount of data.
+ *
+ * @param request The request to create.
+ * @param command_id The command ID.
+ * @param data_size The size of the data to read.
+ */
+void lw_create_request_read_data(lw_request *request, uint8_t command_id, uint32_t data_size);
 
 /*
  * Create a write request with an int8_t value.
@@ -382,80 +414,42 @@ void lw_parse_response_data(lw_response *response, uint8_t *data, uint32_t size,
 // Managed request/response commands.
 //
 // The API offers a fully managed way to send requests and receive responses.
-// This means that timeouts and retries are handled automatically.
+// This means that read and write calls are handled automatically.
 //
-// The 'callback device' is used to execute platform level callbacks such as
-// sending data over a serial port, sleeping, and getting the current time.
+// The 'callback device' is used to execute platform level callbacks which
+// issue read and write commands over I2C.
 // ----------------------------------------------------------------------------
-#define LW_REQUEST_RETRIES 4
-#define LW_RESPONSE_TIMEOUT_MS 1000
-
-#define LW_ANY_COMMAND 255
-
 typedef struct lw_callback_device_s lw_callback_device;
 
 /*
- * Sleep callback. This callback is called when the API wants to sleep for a
- * specified number of milliseconds. This callback should only return once the
- * sleep time has elapsed, however it can return early if necessary and the
- * API will re-issue the callback again.
+ * I2C read callback. This callback is called when the API wants to send a
+ * read request to the device.
  *
  * @param device The callback device.
- * @param time_ms The time to sleep in milliseconds.
+ * @param reg The register to read from.
+ * @param buffer The data buffer to be read into.
+ * @param size The number of bytes to read.
+ * @return LW_RESULT_SUCCESS on success, or an error code on failure.
  */
-typedef void (*lw_device_callback_sleep)(lw_callback_device *device, uint32_t time_ms);
+typedef lw_result (*lw_device_callback_i2c_read)(lw_callback_device *device, uint8_t reg,  uint8_t *buffer, uint32_t size);
 
 /*
- * Get time callback. This callback is called when the API wants to get the
- * current time in milliseconds. This is NOT wall clock time, but most usually
- * the time since the host device was powered on. The API does not care what
- * the value represents as long as it monotoniclly increases in milliseconds
- * elapsed since the last call to this function.
+ * I2C write callback. This callback is called when the API wants to send a
+ * write request to the device.
  *
  * @param device The callback device.
- * @return The current time in milliseconds.
+ * @param reg The register to write to.
+ * @param buffer The data buffer to write.
+ * @param size The number of bytes to write.
+ * @return LW_RESULT_SUCCESS on success, or an error code on failure.
  */
-typedef uint32_t (*lw_device_callback_get_time_ms)(lw_callback_device *device);
-
-/*
- * Serial send callback. This callback is called when the API wants to send
- * data to the device. The callback should block until ALL the data has
- * been sent. Please take note of the return value requirements.
- *
- * @param device The callback device.
- * @param buffer The data buffer to send.
- * @param size The size of the data buffer.
- * @return Positive number: The number of bytes sent.
- *         0: If there was a critical error and the connection is lost.
- */
-typedef uint32_t (*lw_device_callback_serial_send)(lw_callback_device *device, uint8_t *buffer, uint32_t size);
-
-/*
- * Serial receive callback. This callback is called when the API wants to
- * receive data from the device. This function must receive UP TO the number
- * of bytes requested. If timeout_ms is 0 then the API assumes a non-blocking
- * call that will return immediately if no data is available. If timeout_ms
- * is non-zero then the function can block for the entire duration of
- * timeout_ms, but this is not required and the API will re-issue the callback
- * if necessary. Please take note of the return value requirements.
- *
- * @param device The callback device.
- * @param buffer The buffer to write the received data to.
- * @param size The number of bytes requested to read.
- * @param timeout_ms The timeout in milliseconds, or 0 for non-blocking.
- * @return Positive number: The number of bytes read.
- *         0: If timeout expired or no data is available.
- *         -1: If there was a critical error and the connection is lost.
- */
-typedef int32_t (*lw_device_callback_serial_receive)(lw_callback_device *device, uint8_t *buffer, uint32_t size, uint32_t timeout_ms);
+typedef lw_result (*lw_device_callback_i2c_write)(lw_callback_device *device, uint8_t reg, uint8_t *buffer, uint32_t size);
 
 struct lw_callback_device_s {
     void *user_data;
 
-    lw_device_callback_sleep sleep;
-    lw_device_callback_get_time_ms get_time_ms;
-    lw_device_callback_serial_send serial_send;
-    lw_device_callback_serial_receive serial_receive;
+    lw_device_callback_i2c_read i2c_read;
+    lw_device_callback_i2c_write i2c_write;
 
     lw_request request;
     lw_response response;
@@ -465,32 +459,17 @@ struct lw_callback_device_s {
  * Create a managed callback device.
  *
  * @param user_data User data to pass to the platform callbacks.
- * @param sleep Sleep callback.
- * @param get_time_ms Get time callback.
- * @param serial_send Serial send callback.
- * @param serial_receive Serial receive callback.
+ * @param i2c_read I2C read callback.
+ * @param i2c_write I2C write callback.
  * @return The created callback device.
  */
 lw_callback_device lw_create_callback_device(void *user_data,
-                                             lw_device_callback_sleep sleep,
-                                             lw_device_callback_get_time_ms get_time_ms,
-                                             lw_device_callback_serial_send serial_send,
-                                             lw_device_callback_serial_receive serial_receive);
+                                             lw_device_callback_i2c_read i2c_read,
+                                             lw_device_callback_i2c_write i2c_write);
 
 /*
- * Wait for the next response packet with a specific command ID. This can be a
- * blocking or non-blocking call depending on the timeout_ms argument.
- *
- * @param device The callback device.
- * @param command_id The command ID to wait for, or LW_ANY_COMMAND.
- * @param timeout_ms The timeout in milliseconds, or 0 for non-blocking.
- * @return LW_RESULT_SUCCESS on success, or an error code on failure, or
- *         LW_RESULT_AGAIN if non-blocking and no response has been completed.
- */
-lw_result lw_wait_for_next_response(lw_callback_device *device, uint8_t command_id, uint32_t timeout_ms);
-
-/*
- * Fully managed request sending and waiting for the response.
+ * Fully managed request sending. This function will use the callbacks
+ * defined in the callback device to send the request and receive data.
  *
  * @param device The callback device.
  * @return LW_RESULT_SUCCESS on success, or an error code on failure.

@@ -5,17 +5,22 @@
 // https://www.lightwarelidar.com
 // ----------------------------------------------------------------------------
 //
-// License: MIT
+// License: MIT No Attribution (MIT-0)
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
 // deal in the Software without restriction, including without limitation the
 // rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
 // sell copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
+// furnished to do so.
 // 
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -125,7 +130,7 @@ lw_platform_serial_port grf500 = lw_platform_create_serial_port();
 // Example Linux device serial port: "/dev/ttyACM0"
 check_success(lw_platform_serial_connect("\\\\\\\\.\\\\COM4", 115200, &grf500), "Failed to connect to serial port");
 
-// Make sure the GRF-250 is in Serial mode.
+// Make sure the grf500 is in Serial mode.
 if (lw_platform_serial_write(&grf500, (uint8_t *)"UUU", 3) == 0) {
 	printf("Failed to send UUU\\n");
 	return 1;

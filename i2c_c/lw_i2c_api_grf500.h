@@ -1,21 +1,26 @@
 // ----------------------------------------------------------------------------
-// LightWare Serial API GRF-500
+// LightWare I2C API GRF-500
 // Version: 1.1.0
 // Copyright (c) 2025 LightWare Optoelectronics (Pty) Ltd.
 // https://www.lightwarelidar.com
 // ----------------------------------------------------------------------------
 //
-// License: MIT
+// License: MIT No Attribution (MIT-0)
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
 // deal in the Software without restriction, including without limitation the
 // rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
 // sell copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
+// furnished to do so.
 // 
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -28,7 +33,7 @@
 #ifndef LW_API_GRF500_H
 #define LW_API_GRF500_H
 
-#include "lw_serial_api.h"
+#include "lw_i2c_api.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -160,7 +165,7 @@ typedef struct {
 // Timeouts and retries are handled automatically.
 //
 // The 'callback device' is used to execute platform level callbacks such as
-// sending data over a serial port, sleeping, and getting the current time.
+// the reading and writing of data to the i2c bus.
 // ----------------------------------------------------------------------------
 
 /*
@@ -645,14 +650,6 @@ lw_result lw_grf500_get_rolling_average_size(lw_callback_device *device, uint32_
 lw_result lw_grf500_set_rolling_average_size(lw_callback_device *device, uint32_t size);
 
 /*
- * Puts the device into sleep mode. This mode is only available in serial UART communication mode. The device is then awakened by any activity on the Serial UART communication lines and will resume previous operation.
- *
- * @param device Connected device.
- * @return LW_RESULT_SUCCESS on success, or an error code on failure.
- */
-lw_result lw_grf500_set_sleep(lw_callback_device *device);
-
-/*
  * Get the state of the LED.
  *
  * @param device Connected device.
@@ -696,14 +693,14 @@ lw_result lw_grf500_set_zero_offset(lw_callback_device *device, int32_t offset_c
 
 
 /*
- * When communicating over the serial interface, it is important to initiate
- * serial mode. This is only required if the startup mode is set to
+ * When communicating over the i2c interface, it is important to initiate
+ * i2c mode. This is only required if the startup mode is set to
  * 'Wait for interface'.
  *
  * @param device Connected device.
  * @return LW_RESULT_SUCCESS on success, or an error code on failure.
  */
-lw_result lw_grf500_initiate_serial(lw_callback_device *device);
+lw_result lw_grf500_initiate_comms(lw_callback_device *device);
 
 
 /*
@@ -717,19 +714,8 @@ lw_result lw_grf500_get_product_info(lw_callback_device *device, lw_grf500_produ
 
 
 /*
- * Puts the device into sleep mode. This mode is only available in serial
- * UART communication mode. The device is then awakened by any activity on the
- * Serial UART communication lines and will resume previous operation.
- *
- * @param device Connected device.
- * @return LW_RESULT_SUCCESS on success, or an error code on failure.
- */
-lw_result lw_grf500_sleep(lw_callback_device *device);
-
-
-/*
  * Restart the device as if it had been power cycled. You will need to
- * re-establish the serial connection after this command.
+ * re-establish the connection after this command.
  *
  * @param device Connected device.
  * @return LW_RESULT_SUCCESS on success, or an error code on failure.
@@ -746,52 +732,13 @@ lw_result lw_grf500_reset(lw_callback_device *device);
 lw_result lw_grf500_save_parameters(lw_callback_device *device);
 
 
-/*
- * Get the next streamed distance data.
- *
- * If the timeout_ms is greater than 0 then this function will block until the
- * next distance data is available or the timeout is reached.
- *
- * If the timeout_ms is 0 then this function will return immediately with
- * either LW_RESULT_SUCCESS if streaming data is available, or LW_RESULT_AGAIN
- * if a response is still being built.
- *
- * @param device Connected device.
- * @param timeout_ms The timeout in milliseconds.
- * @return LW_RESULT_SUCCESS on success, or an error code on failure, or
- *         LW_RESULT_AGAIN if the response is still building, or
- *         LW_RESULT_TIMEOUT if the timeout is reached.
- */
-lw_result lw_grf500_wait_for_streamed_distance_data(lw_callback_device *device, lw_grf500_distance_config config, lw_grf500_distance_data_cm *data, uint32_t timeout_ms);
-
-/*
- * Get the next streamed multi signal distance data.
- *
- * If the timeout_ms is greater than 0 then this function will block until the
- * next distance data is available or the timeout is reached.
- *
- * If the timeout_ms is 0 then this function will return immediately with
- * either LW_RESULT_SUCCESS if streaming data is available, or LW_RESULT_AGAIN
- * if a response is still being built.
- *
- * @param device Connected device.
- * @param timeout_ms The timeout in milliseconds.
- * @return LW_RESULT_SUCCESS on success, or an error code on failure, or
- *         LW_RESULT_AGAIN if the response is still building, or
- *         LW_RESULT_TIMEOUT if the timeout is reached.
- */
-lw_result lw_grf500_wait_for_streamed_multi_data(lw_callback_device *device, lw_grf500_multi_data *data, uint32_t timeout_ms);
-
-
-
 // ----------------------------------------------------------------------------
 // Request generators.
 //
 // These functions create raw requests that can be sent to the device.
 //
 // If you want the API to handle sending requests and receiving responses,
-// with timeouts and retries, please use the managed version of these 
-// commands (above).
+// please use the managed version of these commands (above).
 //
 // Please read the API documentation or the comments for the managed version
 // of these commands (above) for more details on what each command does.
@@ -809,7 +756,7 @@ lw_result lw_grf500_create_request_read_distance_config(lw_request *request);
 lw_result lw_grf500_create_request_write_distance_config(lw_request *request, lw_grf500_distance_config config);
 lw_result lw_grf500_create_request_read_stream(lw_request *request);
 lw_result lw_grf500_create_request_write_stream(lw_request *request, lw_grf500_stream_id stream);
-lw_result lw_grf500_create_request_read_distance_data(lw_request *request);
+lw_result lw_grf500_create_request_read_distance_data(lw_request *request, lw_grf500_distance_config config);
 lw_result lw_grf500_create_request_read_multi_data(lw_request *request);
 lw_result lw_grf500_create_request_read_laser_firing(lw_request *request);
 lw_result lw_grf500_create_request_write_laser_firing(lw_request *request, lw_bool enable);
@@ -849,7 +796,6 @@ lw_result lw_grf500_create_request_read_rolling_average_enable(lw_request *reque
 lw_result lw_grf500_create_request_write_rolling_average_enable(lw_request *request, lw_bool enable);
 lw_result lw_grf500_create_request_read_rolling_average_size(lw_request *request);
 lw_result lw_grf500_create_request_write_rolling_average_size(lw_request *request, uint32_t size);
-lw_result lw_grf500_create_request_write_sleep(lw_request *request);
 lw_result lw_grf500_create_request_read_led_state(lw_request *request);
 lw_result lw_grf500_create_request_write_led_state(lw_request *request, lw_bool enable);
 lw_result lw_grf500_create_request_read_zero_offset(lw_request *request);
@@ -862,8 +808,7 @@ lw_result lw_grf500_create_request_write_zero_offset(lw_request *request, int32_
 // These functions extract information from responses sent by the device.
 //
 // If you want the API to handle sending requests and receiving responses,
-// with timeouts and retries, please use the managed version of these 
-// commands (above).
+// please use the managed version of these commands (above).
 //
 // Please read the API documentation or the comments for the managed version
 // of these commands (above) for more details on what each command returns.
